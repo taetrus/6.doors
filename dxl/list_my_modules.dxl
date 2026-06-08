@@ -1,0 +1,70 @@
+//==============================================================================
+// list_my_modules.dxl
+//
+// Lists every FORMAL module the running user can access, across all projects
+// in the connected database, and writes them to a CSV file with columns:
+//   Path,Type
+//
+// Access semantics: DXL runs under the logged-in user's permissions, so a
+// normal (non-Admin) account only enumerates items it is allowed to see.
+// Run with YOUR credentials to get exactly "modules I have access to".
+//
+// Deliberately lightweight: reads only the item handle (fullName/type) and
+// does NOT open/lock any module. Object counts are intentionally omitted here
+// because counting requires opening each module read-only (see ROADMAP item 2).
+//
+// Batch usage (see scripts/run_list_my_modules.bat):
+//   doors.exe -data 36677@server -u "kerem" -P "pwd" -b "C:\dxl\list_my_modules.dxl" -W
+//==============================================================================
+
+// output location: override with env var DOORS_MODULE_LIST, else default
+string outPath() {
+    string v = getenv("DOORS_MODULE_LIST")
+    if (null v || v == "") return "C:\\temp\\my_modules.csv"
+    return v
+}
+
+// CSV field: quote-wrapped, internal quotes doubled, newlines/tabs flattened.
+// NOTE: duplicated from batch_export.dxl for now; ROADMAP item 1 factors this
+// (and the other shared helpers) into dxl/lib/common.inc.dxl.
+string csvField(string raw) {
+    if (null raw) return "\"\""
+    string out = ""
+    int n = length raw
+    int i
+    for (i = 0; i < n; i++) {
+        string ch = raw[i:i]
+        if      (ch == "\"")                             out = out "\"\""
+        else if (ch == "\n" || ch == "\r" || ch == "\t") out = out " "
+        else                                             out = out ch
+    }
+    return "\"" out "\""
+}
+
+string OUT_FILE = outPath()
+
+Stream out = write OUT_FILE
+int count = 0
+
+Project proj
+Item    itm
+
+out << "Path,Type\n"
+
+for proj in database do {
+    for itm in proj do {
+        if (type itm != "Formal") continue     // formal modules only
+        string path = fullName itm
+        string ty   = type itm
+        out  << csvField(path) "," csvField(ty) "\n"
+        print path "\n"                          // console progress only
+        count++
+    }
+}
+
+close out
+
+// Summary goes to the console only, so the CSV file stays pure (header + rows).
+print "----\n"
+print "Total modules accessible: " count "\n"   // int followed by string -> OK
+print "List written to: " OUT_FILE "\n"

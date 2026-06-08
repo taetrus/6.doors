@@ -1,0 +1,109 @@
+//==============================================================================
+// batch_export.dxl
+//
+// Opens a formal module READ-ONLY, walks every (non-deleted) object, and writes
+// a CSV export plus a timestamped run log. No GUI calls -> safe under -batch.
+//
+// Concatenation rule applied throughout: an int/Date is never the LAST token of
+// a juxtaposition; it is always followed by a string so it converts.
+//
+// Batch usage (see scripts/run_batch_export.bat):
+//   doors.exe -data 36677@server -u "kerem" -P "pwd" -b "C:\dxl\batch_export.dxl" -W
+//==============================================================================
+
+string envOr(string varName, string fallback) {
+    string v = getenv(varName)
+    if (null v || v == "") return fallback
+    return v
+}
+
+// CSV field: quote-wrapped, internal quotes doubled, newlines/tabs flattened.
+string csvField(string raw) {
+    if (null raw) return "\"\""
+    string out = ""
+    int n = length raw
+    int i
+    for (i = 0; i < n; i++) {
+        string ch = raw[i:i]
+        if      (ch == "\"")                             out = out "\"\""
+        else if (ch == "\n" || ch == "\r" || ch == "\t") out = out " "
+        else                                             out = out ch
+    }
+    return "\"" out "\""
+}
+
+string MODULE_PATH = envOr("DOORS_MODULE",  "/MyProject/Requirements/Functional Requirements")
+string OUT_CSV     = envOr("DOORS_OUT_CSV", "C:\\temp\\doors_export.csv")
+string LOG_FILE    = envOr("DOORS_LOG",     "C:\\temp\\doors_batch.log")
+
+Stream logStream = null
+void logOpen()  { logStream = append LOG_FILE }
+void logClose() { if (!null logStream) close logStream }
+void logMsg(string msg) {
+    string ts = today() ""               // Date then "" -> converts cleanly
+    if (!null logStream) logStream << ts "  " msg "\n"
+    print ts "  " msg "\n"
+}
+
+string attrStr(Object o, string attrName) {
+    if (null o) return ""
+    AttrDef ad = find(module(o), attrName)
+    if (null ad) return ""
+    string v = o.attrName
+    if (null v) return ""
+    return v
+}
+
+// ---- MAIN ----
+logOpen()
+logMsg("=== Batch run started ===")
+logMsg("Module : " MODULE_PATH)
+logMsg("Output : " OUT_CSV)
+
+noError()
+Module m = read(MODULE_PATH, false)
+string openErr = lastError()
+if (null m) {
+    logMsg("ERROR: could not open module. " (null openErr ? "(no detail)" : openErr))
+    logMsg("=== Batch run aborted ===")
+    logClose()
+    halt
+}
+
+noError()
+Stream csvOut = write OUT_CSV
+string csvErr = lastError()
+if (!null csvErr) {
+    logMsg("ERROR: could not open output file. " csvErr)
+    close m
+    logMsg("=== Batch run aborted ===")
+    logClose()
+    halt
+}
+
+csvOut << "Identifier,Number,Level,Heading,Text\n"
+
+int nSeen    = 0
+int nWritten = 0
+
+Object o
+for o in m do {
+    nSeen++
+    if (isDeleted o) continue
+    string id   = identifier(o)
+    string num  = number(o)
+    int    lvl  = level(o)
+    string head = attrStr(o, "Object Heading")
+    string text = attrStr(o, "Object Text")
+    string row = csvField(id) "," csvField(num) "," lvl "," csvField(head) "," csvField(text) "\n"
+    csvOut << row
+    nWritten++
+}
+
+close csvOut
+close m
+
+logMsg("Objects seen     : " nSeen "")
+logMsg("Objects written  : " nWritten "")
+logMsg("=== Batch run finished ===")
+logClose()
