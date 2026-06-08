@@ -11,7 +11,7 @@ set "DOORS_DATA=36677@YOUR_SERVER"
 set "DOORS_USER=kerem"
 set "DOORS_PASS=YOUR_PASSWORD"
 set "DXL_SCRIPT=C:\dxl\list_my_modules.dxl"
-set "DOORS_MODULE_LIST=C:\temp\my_modules.txt"
+set "DOORS_MODULE_LIST=C:\temp\my_modules.csv"
 REM ---------------------------------------------------------------------------
 
 if not exist "C:\temp" mkdir "C:\temp"
